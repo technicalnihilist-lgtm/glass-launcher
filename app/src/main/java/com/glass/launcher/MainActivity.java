@@ -246,11 +246,12 @@ public class MainActivity extends Activity {
   }
 
   private void js(final String code) {
-    if (web == null || !loaded) return;
+    final WebView w = web;
+    if (w == null || !loaded) return;
     runOnUiThread(new Runnable() {
       @Override public void run() {
         try {
-          web.evaluateJavascript(code, null);
+          w.evaluateJavascript(code, null);
         } catch (Throwable t) {
           log(t);
         }
@@ -260,6 +261,12 @@ public class MainActivity extends Activity {
 
   /* ------------------------------------------------------------- app list */
 
+  private volatile String lastPayload = "";
+
+  // The app list is sent in two steps: names and packages first (a few KB), then the
+  // icons one batch at a time. Sending everything at once meant a 2-4 MB javascript
+  // string on a normal phone, which the WebView silently drops or dies on - the page
+  // then keeps showing its built-in demo apps and nothing works.
   private void pushApps() {
     if (web == null) return;
     new Thread(new Runnable() {
@@ -282,16 +289,10 @@ public class MainActivity extends Activity {
             }
           });
 
-          // Icon payload is the biggest thing we send to the page. Keep it small enough
-          // that a phone with 200+ apps cannot blow the WebView's memory.
-          int count = list.size();
-          int px;
-          if (count > 180) px = 72;
-          else if (count > 90) px = 88;
-          else px = 108;
-
           JSONArray apps = new JSONArray();
-          for (int k = 0; k < count; k++) {
+          List<String> pkgs = new ArrayList<String>();
+          List<ResolveInfo> shown = new ArrayList<ResolveInfo>();
+          for (int k = 0; k < list.size(); k++) {
             ResolveInfo ri = list.get(k);
             if (ri == null || ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
@@ -299,8 +300,10 @@ public class MainActivity extends Activity {
             JSONObject o = new JSONObject();
             o.put("n", label(pm, ri));
             o.put("p", pkg);
-            o.put("i", png(icon(pm, ri), px));
+            o.put("i", "");
             apps.put(o);
+            pkgs.add(pkg);
+            shown.add(ri);
           }
 
           JSONArray dock = new JSONArray();
@@ -310,12 +313,67 @@ public class MainActivity extends Activity {
           dock.put(pick(new Intent(MediaStore.ACTION_IMAGE_CAPTURE)));
 
           JSONObject out = new JSONObject().put("apps", apps).put("dock", dock);
-          js("setApps(" + JSONObject.quote(out.toString()) + ")");
+          lastPayload = out.toString();
+          js("setApps(" + JSONObject.quote(lastPayload) + ")");
+
+          // icons, in small batches so the UI stays responsive
+          int count = shown.size();
+          int px = count > 180 ? 72 : (count > 90 ? 88 : 108);
+          StringBuilder sb = new StringBuilder();
+          int inBatch = 0;
+          for (int k = 0; k < count; k++) {
+            if (web == null) return;
+            String b = png(icon(pm, shown.get(k)), px);
+            if (b == null || b.length() == 0) continue;
+            sb.append("setIcon(").append(JSONObject.quote(pkgs.get(k))).append(",")
+              .append(JSONObject.quote(b)).append(");");
+            if (++inBatch >= 6) {
+              js(sb.toString());
+              sb.setLength(0);
+              inBatch = 0;
+              try { Thread.sleep(20); } catch (InterruptedException ignored) { }
+            }
+          }
+          if (sb.length() > 0) js(sb.toString());
+
+          if (count == 0) {
+            Log.w(TAG, "no launchable apps found");
+            toast("No apps found - is the launcher allowed to list them?");
+          } else {
+            verifyApps(count, 0);
+          }
         } catch (Throwable t) {
           log(t);
         }
       }
     }).start();
+  }
+
+  // If the page still shows no real apps, resend the list once without icons.
+  private void verifyApps(final int expected, final int attempt) {
+    final WebView w = web;
+    if (w == null) return;
+    w.postDelayed(new Runnable() {
+      @Override public void run() {
+        try {
+          w.evaluateJavascript("document.querySelectorAll('.app[data-p]').length",
+              new android.webkit.ValueCallback<String>() {
+                @Override public void onReceiveValue(String v) {
+                  try {
+                    int n = Integer.parseInt(v == null ? "0" : v.replaceAll("[^0-9]", ""));
+                    Log.i(TAG, "rendered " + n + " of " + expected + " apps");
+                    if (n == 0 && expected > 0 && attempt < 1 && lastPayload.length() > 0) {
+                      js("setApps(" + JSONObject.quote(lastPayload) + ")");
+                      verifyApps(expected, attempt + 1);
+                    }
+                  } catch (Throwable ignored) { }
+                }
+              });
+        } catch (Throwable t) {
+          log(t);
+        }
+      }
+    }, 1800);
   }
 
   private String label(PackageManager pm, ResolveInfo ri) {
@@ -388,19 +446,25 @@ public class MainActivity extends Activity {
   /* --------------------------------------------------------------- bridge */
 
   public class Bridge {
-    @JavascriptInterface public void launch(String pkg) {
-      launchPackage(pkg);
+    @JavascriptInterface public void launch(final String pkg) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() { launchPackage(pkg); }
+      });
     }
 
-    @JavascriptInterface public void appInfo(String pkg) {
-      try {
-        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.parse("package:" + pkg));
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(i);
-      } catch (Throwable t) {
-        log(t);
-      }
+    @JavascriptInterface public void appInfo(final String pkg) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + pkg));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+          } catch (Throwable t) {
+            log(t);
+          }
+        }
+      });
     }
 
     @JavascriptInterface public void refresh() {
@@ -499,6 +563,14 @@ public class MainActivity extends Activity {
           pw.close();
         } catch (Throwable ignored) { }
         if (prev != null) prev.uncaughtException(t, e);
+      }
+    });
+  }
+
+  private void toast(final String msg) {
+    runOnUiThread(new Runnable() {
+      @Override public void run() {
+        try { Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show(); } catch (Throwable ignored) { }
       }
     });
   }

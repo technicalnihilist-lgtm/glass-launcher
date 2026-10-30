@@ -1,9 +1,9 @@
-# Glass Launcher 2.4
+# Glass Launcher 2.5
 
 An iOS‑style Liquid Glass home screen for Android — a real HOME app (launcher), not a
-mockup. The UI is your `index.html`, with **11 lines changed and nothing else**.
+mockup. The UI is your `index.html`, with a handful of lines changed — every one of them a bug fix, no redesign.
 
-[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.4/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
+[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.5/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
 
 | Home (21:9 phone) | Second page | Liquid Glass controls |
 |:--:|:--:|:--:|
@@ -119,6 +119,34 @@ build.sh                                CLI build
 ```
 
 ## Changelog
+
+**2.5 — bug sweep (17 automated interaction tests, all passing)**
+* **The launcher rendered zoomed and cropped.** `#phone` was scaled with
+  `translate(-50%,-50%) scale(K)`, which made the transformed box wider than the viewport.
+  The mobile viewport then grew to fit that overflow, which made `K` bigger, which made the
+  overflow bigger — a feedback loop. Measured: `innerWidth` drifted from 393 to 442–490, so
+  the canvas was ~1.13× too big and cut off on both sides. Now `transform-origin:0 0` with an
+  explicit `left/top`, so the box never exceeds the viewport. `innerWidth` stays exactly 393.
+* **The app list was one 2–4 MB javascript string.** A phone with 120+ apps produced a string
+  big enough that the WebView silently dropped it — the launcher then kept showing its
+  built-in demo apps, and tapping them did nothing. The list is now 2.2 KB (names + packages)
+  and the icons stream in afterwards in batches of six, ~20 ms apart.
+* **Icons vanished after any re-layout** (resize, inset change) because they only existed in
+  the DOM. They are now cached and re-applied on every rebuild.
+* **Broken-image tiles** appeared when an icon was missing or invalid; they now fall back to
+  a letter tile, and an `onerror` guard catches bad data.
+* **`getAnimations()` does not exist on older Android WebViews** — opening any app threw and
+  the app never launched. Guarded.
+* **Opening an app with no icon threw a TypeError** (`el.querySelector('img').src`). Guarded.
+* **Long-press on empty space flashed edit mode and cancelled it on release.** Fixed with a
+  `lpFired` flag.
+* **Demo apps flashed on launch** before the real list arrived; the demo grid and dock are now
+  only built when the page runs outside the app.
+* Bridge calls from the page (`launch`, `appInfo`) now hop to the UI thread, and the icon
+  stream can no longer touch a destroyed WebView.
+
+Verified at 360×800, 393×851, 393×917 (21:9), 412×915, 480×1040 and 800×1280 (tablet): no
+overflow anywhere, canvas fills phones exactly and centres on tablets.
 
 **2.4** — dock and status row now respect the navigation bar and the display cutout on every
 device; crash notice toast. **2.3** — fills tall screens instead of letterboxing; Search pill no longer overlaps the

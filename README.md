@@ -4,7 +4,7 @@ An iOS‑style **Liquid Glass** home screen for Android — a real HOME app (lau
 mockup. The whole UI is one HTML file inside a native WebView shell, and every
 measurement it uses comes from the device, so it fits any phone, tablet or foldable.
 
-[**Download the APK**](GlassLauncher.apk) · 69 KB · Android 7.0+ (API 24) · no permissions
+[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.1/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
 
 | Home | Apps | Search |
 |:--:|:--:|:--:|
@@ -16,7 +16,8 @@ measurement it uses comes from the device, so it fits any phone, tablet or folda
 
 ## Install
 
-1. Copy `GlassLauncher.apk` to the phone (or `adb install -r GlassLauncher.apk`).
+1. Grab the APK from the [v2.1 release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest)
+   (or `adb install -r GlassLauncher.apk`).
 2. Allow "Install unknown apps" when Android asks.
 3. Press **Home** → choose **Glass Launcher** → **Always**.
 
@@ -24,6 +25,10 @@ To switch back: Settings → Apps → Default apps → Home app.
 
 > The APK is signed with a self-signed key, so Play Protect may show one
 > "unknown developer" prompt. That is normal for a sideloaded app.
+
+> **Coming from 2.0?** Uninstall the old Glass Launcher before installing 2.1 —
+> the signing key was regenerated, so Android refuses it as an in-place update
+> ("App not installed").
 
 ## What "adapts to the system" actually means
 

@@ -15,7 +15,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/compiled" "$OUT/gen" "$OUT/classes" "$OUT/dex"
   --manifest app/src/main/AndroidManifest.xml -R "$OUT/compiled/res.zip" \
   -A app/src/main/assets --java "$OUT/gen" \
   --min-sdk-version 24 --target-sdk-version 34 \
-  --version-code 5 --version-name "2.3" \
+  --version-code 6 --version-name "2.4" \
   --auto-add-overlay
 
 javac -nowarn -Xlint:-options -source 11 -target 11 -classpath "$PLAT" \

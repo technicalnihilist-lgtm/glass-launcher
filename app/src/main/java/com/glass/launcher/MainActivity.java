@@ -33,8 +33,11 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Toast;
 import android.widget.TextView;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FileReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
@@ -66,12 +69,14 @@ public class MainActivity extends Activity {
   private volatile boolean loaded = false;
   private BroadcastReceiver pkgReceiver;
   private boolean rebuilding = false;
+  private int safeTop = 0, safeBottom = 0; // in CSS px (dp)
 
   @Override protected void onCreate(Bundle b) {
     super.onCreate(b);
     installCrashGuard();
 
     try { setupWindow(); } catch (Throwable t) { log(t); }
+    showCrashNotice();
 
     try {
       startWeb();
@@ -142,11 +147,20 @@ public class MainActivity extends Activity {
       try { s.setSafeBrowsingEnabled(false); } catch (Throwable ignored) { }
     }
 
+    web.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+      @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets in) {
+        readSafeArea(in);
+        pushSafeArea();
+        return in;
+      }
+    });
+
     web.addJavascriptInterface(new Bridge(), "Android");
     web.setWebChromeClient(new WebChromeClient());
     web.setWebViewClient(new WebViewClient() {
       @Override public void onPageFinished(WebView v, String url) {
         loaded = true;
+        pushSafeArea();
         pushApps();
       }
 
@@ -182,6 +196,53 @@ public class MainActivity extends Activity {
       showFallback();
     }
     rebuilding = false;
+  }
+
+  // The page runs edge to edge, so it needs to know how much of the screen the
+  // system bars and the camera cutout own - otherwise the dock sits behind the
+  // navigation bar (very visible on 3-button navigation).
+  private void readSafeArea(WindowInsets in) {
+    try {
+      float d = getResources().getDisplayMetrics().density;
+      int t = 0, b = 0;
+      if (Build.VERSION.SDK_INT >= 30) {
+        t = in.getInsets(WindowInsets.Type.displayCutout()).top;
+        b = in.getInsets(WindowInsets.Type.navigationBars()).bottom;
+      } else {
+        b = in.getSystemWindowInsetBottom();
+        if (Build.VERSION.SDK_INT >= 28 && in.getDisplayCutout() != null) {
+          t = in.getDisplayCutout().getSafeInsetTop();
+        }
+      }
+      safeTop = Math.round(t / d);
+      safeBottom = Math.round(b / d);
+    } catch (Throwable t) {
+      log(t);
+    }
+  }
+
+  private void pushSafeArea() {
+    js("setSafeArea(" + safeTop + "," + safeBottom + ")");
+  }
+
+  private void showCrashNotice() {
+    try {
+      File f = new File(getFilesDir(), "last_crash.txt");
+      if (!f.exists()) return;
+      BufferedReader r = new BufferedReader(new FileReader(f));
+      String line, ex = null;
+      while ((line = r.readLine()) != null) {
+        if (line.contains("Exception") || line.contains("Error")) { ex = line.trim(); break; }
+      }
+      r.close();
+      f.delete();
+      if (ex != null) {
+        if (ex.length() > 160) ex = ex.substring(0, 160);
+        Toast.makeText(this, "Last crash: " + ex, Toast.LENGTH_LONG).show();
+      }
+    } catch (Throwable t) {
+      log(t);
+    }
   }
 
   private void js(final String code) {

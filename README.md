@@ -1,9 +1,9 @@
-# Glass Launcher 2.3
+# Glass Launcher 2.4
 
 An iOS‑style Liquid Glass home screen for Android — a real HOME app (launcher), not a
-mockup. The UI is your `index.html`, with **8 lines changed and nothing else**.
+mockup. The UI is your `index.html`, with **11 lines changed and nothing else**.
 
-[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.3/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
+[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.4/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
 
 | Home (21:9 phone) | Second page | Liquid Glass controls |
 |:--:|:--:|:--:|
@@ -28,6 +28,9 @@ icons. Those are the only things that moved:
 | `ins()` | `844 - …` | `H - …` (zoom animation follows the real height) |
 | `gridI()` | fixed 99 px row pitch | pitch passed in |
 | `build()` | 16 apps page 1 / 24 after | rows and pitch computed from the space above the pill, and the page re-flows on resize |
+| `#status` top | `0` | `var(--st)` — clears the notch / camera hole |
+| `#sp`, `#dock` | fixed | `- var(--sb)` — clears the navigation bar |
+| `setSafeArea()` | — | new hook: the shell reports the real insets, the page re-flows |
 
 On a 390×844 screen the result is **pixel‑identical** to the original (verified: 0 differing
 pixels out of 329,160). On taller screens the grid simply gains a row.
@@ -37,7 +40,20 @@ apps, hand them over through `setApps()`, launch a package when the page calls
 `Android.launch(pkg)`, and map Back / Home / resume to `goBack()` / `goHome()` /
 `onResumeL()`.
 
-## Crash and glitch fixes (2.2 → 2.3)
+## Screen fitting (2.4) — the big one
+
+The page runs edge to edge, and until 2.3 it knew nothing about the system bars. On any
+phone the **dock sat behind the navigation bar** — completely hidden behind the three
+buttons on 3-button navigation, and half under the gesture pill on gesture navigation.
+That is the "does not fit my screen" problem.
+
+Now the shell measures the real insets (navigation bar + display cutout, in dp) on every
+window-inset change and calls `setSafeArea(top, bottom)`. The page lifts the dock, the
+search pill and the status row by exactly that much and recomputes its rows. Verified at
+0/24/48 dp navigation heights: dock clears the bar on all of them, the grid never collides
+with the pill, and the wallpaper still runs full-bleed behind the bars.
+
+## Crash and glitch fixes (2.2 → 2.4)
 
 * **WebView renderer death** — heavy `backdrop-filter` on a low‑memory device can kill the
   WebView process on its own; `onRenderProcessGone()` now rebuilds it instead of taking the
@@ -53,6 +69,8 @@ apps, hand them over through `setApps()`, launch a package when the page calls
 * **Crash log** — uncaught exceptions are written to `files/last_crash.txt` before exit.
 * **Portrait lock** — restored, as in the original manifest; this design is a phone‑portrait
   layout and landscape squashes it into a narrow strip.
+* **Crash notice** — if the app crashed last time, the next start shows the exception name in
+  a toast, so it can be reported instead of guessed at.
 
 ## Install
 
@@ -102,7 +120,8 @@ build.sh                                CLI build
 
 ## Changelog
 
-**2.3** — fills tall screens instead of letterboxing; Search pill no longer overlaps the
+**2.4** — dock and status row now respect the navigation bar and the display cutout on every
+device; crash notice toast. **2.3** — fills tall screens instead of letterboxing; Search pill no longer overlaps the
 last row; grid re‑flows on resize; portrait lock restored.
 
 **2.2** — `index.html` restored to the original. WebView renderer recovery, bounded icon

@@ -15,7 +15,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 .o3{right:-140px;top:470px;width:420px;height:340px;background:radial-gradient(circle,#98cdfb,#5aa9f0 70%)}
 .glass{position:relative;background:linear-gradient(135deg,rgba(255,255,255,calc(.26*var(--o))),rgba(255,255,255,calc(.06*var(--o))) 50%,rgba(255,255,255,calc(.14*var(--o))));backdrop-filter:blur(var(--b)) saturate(var(--s)) brightness(var(--br));-webkit-backdrop-filter:blur(var(--b)) saturate(var(--s)) brightness(var(--br));box-shadow:inset 1.5px 2px 3px -1px rgba(255,255,255,calc(.8*var(--rim))),inset -1.5px -2px 3px -1px rgba(255,255,255,calc(.5*var(--rim))),0 10px 30px rgba(0,30,90,.18)}
 .glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.2px;background:linear-gradient(135deg,rgba(255,255,255,calc(.9*var(--rim))),transparent 32%,transparent 68%,rgba(255,255,255,calc(.7*var(--rim))));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
-#status{position:absolute;top:0;left:0;right:0;height:56px;z-index:50;pointer-events:none}
+#status{position:absolute;top:var(--st,0px);left:0;right:0;height:56px;z-index:50;pointer-events:none}
 #clk{position:absolute;left:54px;top:17px;font-size:17px;font-weight:600}
 #sys{position:absolute;right:28px;top:20px}
 #pages{position:absolute;inset:0;z-index:5;transition:transform .55s var(--sp),opacity .4s}
@@ -32,8 +32,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 .wl{position:absolute;top:248px;width:160px;text-align:center;font-size:13px;font-weight:500;text-shadow:0 1px 5px rgba(0,40,80,.35)}
 .wx{left:24px;width:160px;background-color:rgba(20,76,176,.6)}
 .cal{left:205px;width:162px;background:#fff;color:#111;box-shadow:0 8px 24px rgba(0,30,90,.18)}
-#sp{position:absolute;left:50%;top:calc(100% - 162px);margin-left:-40px;width:80px;height:31px;border-radius:16px;z-index:6;display:flex;align-items:center;justify-content:center;gap:5px;font-size:14px;font-weight:500;background-color:rgba(30,110,200,.25);transition:opacity .4s;pointer-events:none}
-#dock{position:absolute;left:13px;top:calc(100% - 114px);width:364px;height:104px;border-radius:48px;z-index:7;background-color:rgba(20,90,190,.24);transition:transform .55s var(--sp)}
+#sp{position:absolute;left:50%;top:calc(100% - 162px - var(--sb,0px));margin-left:-40px;width:80px;height:31px;border-radius:16px;z-index:6;display:flex;align-items:center;justify-content:center;gap:5px;font-size:14px;font-weight:500;background-color:rgba(30,110,200,.25);transition:opacity .4s;pointer-events:none}
+#dock{position:absolute;left:13px;top:calc(100% - 114px - var(--sb,0px));width:364px;height:104px;border-radius:48px;z-index:7;background-color:rgba(20,90,190,.24);transition:transform .55s var(--sp)}
 #dock .app{top:20px}
 #app{position:absolute;inset:0;z-index:40;display:none;overflow:hidden;background:#0d0d14}
 #abg,#abody{position:absolute;inset:0}
@@ -61,7 +61,7 @@ input[type=range]{width:100%;accent-color:#fff;margin:12px 0 2px}
 </div>
 <script>
 const $=i=>document.getElementById(i),phone=$('phone'),pages=$('pages'),track=$('track'),dock=$('dock'),app=$('app'),abody=$('abody'),arrow=$('arrow'),wall=$('wall');
-let K=1,H=844;const fit=()=>{const kw=innerWidth/390,kh=innerHeight/844;if(kh>kw){K=kw;H=innerHeight/K}else{K=kh;H=844}phone.style.height=H+'px';phone.style.transform=`translate(-50%,-50%) scale(${K})`;phone.classList.toggle('frame',innerWidth>560&&innerHeight>600)};fit();addEventListener('resize',()=>{fit();if(window.LASTAPPS)build(window.LASTAPPS)});
+let K=1,H=844,SB=0,SA_T=0,SA_B=0;const applySA=()=>{SB=SA_B/K;const r=document.documentElement.style;r.setProperty('--st',(SA_T/K)+'px');r.setProperty('--sb',SB+'px')};const fit=()=>{const kw=innerWidth/390,kh=innerHeight/844;if(kh>kw){K=kw;H=innerHeight/K}else{K=kh;H=844}phone.style.height=H+'px';phone.style.transform=`translate(-50%,-50%) scale(${K})`;phone.classList.toggle('frame',innerWidth>560&&innerHeight>600);applySA()};fit();addEventListener('resize',()=>{fit();if(window.LASTAPPS)build(window.LASTAPPS)});
 const G=(a,b)=>`linear-gradient(180deg,${a},${b})`,S=x=>`<svg viewBox="0 0 60 60">${x}</svg>`,D=new Date();
 const petals=['#ff9f0a','#ffd60a','#a4e04a','#30d158','#40c8e0','#0a84ff','#bf5af2','#ff375f'].map((c,i)=>`<ellipse cx="30" cy="19" rx="6.5" ry="11" fill="${c}" opacity=".85" style="mix-blend-mode:multiply" transform="rotate(${i*45} 30 30)"/>`).join('');
 const ticks=[...Array(12)].map((_,i)=>`<path d="M30 6v3.5" stroke="#222" stroke-width="1.6" transform="rotate(${i*30} 30 30)"/>`).join('');
@@ -157,11 +157,12 @@ abody.addEventListener('click',e=>{const p=e.target.dataset.p;if(!p)return;st={.
 I.Glass=I.Settings;
 const itemHTML=(a,l,t)=>a.p?`<div class="app" data-n="${a.n}" data-p="${a.p}" style="left:${l}px;top:${t}px"><div class="ic" style="background:#222"><img src="data:image/png;base64,${a.i}"></div><span>${a.n}</span></div>`:mk(a.n,l,t);
 const gridI=(a,y,p)=>a.map((x,i)=>itemHTML(x,cx[i%4],y+(i>>2)*(p||99))).join('');
-function build(items){window.LASTAPPS=items;const cap=H-262;const fitRows=top=>{const avail=Math.max(88,cap-top);let r=Math.max(1,Math.floor(avail/88)+1);let p=99;if(r>1)p=Math.min(99,avail/(r-1));return[r,p]};const A=fitRows(277),B=fitRows(82),per1=A[0]*4,perN=B[0]*4;const pgs=[WID+gridI(items.slice(0,per1),277,A[1])];for(let i=per1;i<items.length;i+=perN)pgs.push(gridI(items.slice(i,i+perN),82,B[1]));
+function build(items){window.LASTAPPS=items;const cap=H-262-SB;const fitRows=top=>{const avail=Math.max(88,cap-top);let r=Math.max(1,Math.floor(avail/88)+1);let p=99;if(r>1)p=Math.min(99,avail/(r-1));return[r,p]};const A=fitRows(277),B=fitRows(82),per1=A[0]*4,perN=B[0]*4;const pgs=[WID+gridI(items.slice(0,per1),277,A[1])];for(let i=per1;i<items.length;i+=perN)pgs.push(gridI(items.slice(i,i+perN),82,B[1]));
  track.innerHTML=pgs.map((h,i)=>`<div class="page" style="left:${i*390}px">${h}</div>`).join('');track.style.width=pgs.length*390+'px';N=pgs.length;setPg(Math.min(pg,N-1))}
 build(['FaceTime','Calendar','Photos','Camera','Mail','Notes','Reminders','Clock','News','TV','Games','App Store','Maps','Health','Wallets','Settings','Weather','Stocks','Files','Books','Calculator','Podcasts','Shortcuts','Home'].map(n=>({n})));
 function goHome(){if(cur)closeApp();pages.classList.remove('edit');setPg(0)}
 window.onResumeL=()=>{if(cur)closeApp()};
+window.setSafeArea=(t,b)=>{SA_T=+t||0;SA_B=+b||0;applySA();if(window.LASTAPPS)build(window.LASTAPPS)};
 window.setApps=j=>{const o=JSON.parse(j),dk=[...new Set(o.dock)].map(p=>o.apps.find(a=>a.p==p)).filter(Boolean).slice(0,4);
  dock.innerHTML=dk.map((a,i)=>itemHTML(a,[12,98,185,272][i],20).replace(/<span>.*?<\/span>/,'')).join('');
  build([{n:'Glass'},...o.apps.filter(a=>!dk.includes(a))])};

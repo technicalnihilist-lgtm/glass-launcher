@@ -19,8 +19,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 #clk{position:absolute;left:54px;top:17px;font-size:17px;font-weight:600}
 #sys{position:absolute;right:28px;top:20px}
 #pages{position:absolute;inset:0;z-index:5;transition:transform .55s var(--sp),opacity .4s}
-#track{position:absolute;left:0;top:0;width:1170px;height:844px;transition:transform .6s var(--sp)}
-.page{position:absolute;top:0;width:390px;height:844px}
+#track{position:absolute;left:0;top:0;width:1170px;height:100%;transition:transform .6s var(--sp)}
+.page{position:absolute;top:0;width:390px;height:100%}
 .app{position:absolute;width:80px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;font-weight:500;text-shadow:0 1px 5px rgba(0,40,80,.35);transition:transform .45s var(--sp);cursor:pointer}
 .app:active,.app.press{transform:scale(.84)}
 .edit .app{animation:jig .28s ease-in-out infinite alternate}.edit .app:nth-child(2n){animation-direction:alternate-reverse}
@@ -32,8 +32,8 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-appl
 .wl{position:absolute;top:248px;width:160px;text-align:center;font-size:13px;font-weight:500;text-shadow:0 1px 5px rgba(0,40,80,.35)}
 .wx{left:24px;width:160px;background-color:rgba(20,76,176,.6)}
 .cal{left:205px;width:162px;background:#fff;color:#111;box-shadow:0 8px 24px rgba(0,30,90,.18)}
-#sp{position:absolute;left:50%;top:682px;margin-left:-40px;width:80px;height:31px;border-radius:16px;z-index:6;display:flex;align-items:center;justify-content:center;gap:5px;font-size:14px;font-weight:500;background-color:rgba(30,110,200,.25);transition:opacity .4s;pointer-events:none}
-#dock{position:absolute;left:13px;top:730px;width:364px;height:104px;border-radius:48px;z-index:7;background-color:rgba(20,90,190,.24);transition:transform .55s var(--sp)}
+#sp{position:absolute;left:50%;top:calc(100% - 162px);margin-left:-40px;width:80px;height:31px;border-radius:16px;z-index:6;display:flex;align-items:center;justify-content:center;gap:5px;font-size:14px;font-weight:500;background-color:rgba(30,110,200,.25);transition:opacity .4s;pointer-events:none}
+#dock{position:absolute;left:13px;top:calc(100% - 114px);width:364px;height:104px;border-radius:48px;z-index:7;background-color:rgba(20,90,190,.24);transition:transform .55s var(--sp)}
 #dock .app{top:20px}
 #app{position:absolute;inset:0;z-index:40;display:none;overflow:hidden;background:#0d0d14}
 #abg,#abody{position:absolute;inset:0}
@@ -61,7 +61,7 @@ input[type=range]{width:100%;accent-color:#fff;margin:12px 0 2px}
 </div>
 <script>
 const $=i=>document.getElementById(i),phone=$('phone'),pages=$('pages'),track=$('track'),dock=$('dock'),app=$('app'),abody=$('abody'),arrow=$('arrow'),wall=$('wall');
-let K=1;const fit=()=>{K=Math.min(innerWidth/390,innerHeight/844);phone.style.transform=`translate(-50%,-50%) scale(${K})`;phone.classList.toggle('frame',innerWidth>560&&innerHeight>600)};fit();addEventListener('resize',fit);
+let K=1,H=844;const fit=()=>{const kw=innerWidth/390,kh=innerHeight/844;if(kh>kw){K=kw;H=innerHeight/K}else{K=kh;H=844}phone.style.height=H+'px';phone.style.transform=`translate(-50%,-50%) scale(${K})`;phone.classList.toggle('frame',innerWidth>560&&innerHeight>600)};fit();addEventListener('resize',()=>{fit();if(window.LASTAPPS)build(window.LASTAPPS)});
 const G=(a,b)=>`linear-gradient(180deg,${a},${b})`,S=x=>`<svg viewBox="0 0 60 60">${x}</svg>`,D=new Date();
 const petals=['#ff9f0a','#ffd60a','#a4e04a','#30d158','#40c8e0','#0a84ff','#bf5af2','#ff375f'].map((c,i)=>`<ellipse cx="30" cy="19" rx="6.5" ry="11" fill="${c}" opacity=".85" style="mix-blend-mode:multiply" transform="rotate(${i*45} 30 30)"/>`).join('');
 const ticks=[...Array(12)].map((_,i)=>`<path d="M30 6v3.5" stroke="#222" stroke-width="1.6" transform="rotate(${i*30} 30 30)"/>`).join('');
@@ -114,7 +114,7 @@ dock.addEventListener('click',e=>{const a=e.target.closest('.app');a&&openApp(a)
 // app open / close
 let cur=null,from=null,closing=false;const SP='cubic-bezier(.34,1.45,.5,1)',FULL='inset(0px 0px 0px 0px round 46px)';
 const rel=el=>{const r=el.getBoundingClientRect(),p=phone.getBoundingClientRect();return{x:(r.left-p.left)/K,y:(r.top-p.top)/K,w:r.width/K,h:r.height/K}};
-const ins=r=>`inset(${r.y}px ${390-r.x-r.w}px ${844-r.y-r.h}px ${r.x}px round ${r.w*.224}px)`;
+const ins=r=>`inset(${r.y}px ${390-r.x-r.w}px ${H-r.y-r.h}px ${r.x}px round ${r.w*.224}px)`;
 const cards=['Aaj ka update','Favourites','Recent','Shared with you','Settings'].map(t=>`<div class="card glass"><span>${t}</span><span style="opacity:.6">›</span></div>`).join('');
 function openApp(el){if(cur)return;cur=el;closing=false;const n=el.dataset.n;from=rel(el.querySelector('.ic'));
  $('abg').style.background=(n=='Settings'||n=='Glass')?'radial-gradient(circle at 20% 15%,#ff7ac6,transparent 45%),radial-gradient(circle at 85% 40%,#5ac8fa,transparent 50%),radial-gradient(circle at 40% 90%,#ffd60a,transparent 45%),#3a1f8a':I[n]?I[n][1]:'#1c1c1e';
@@ -156,8 +156,8 @@ abody.addEventListener('click',e=>{const p=e.target.dataset.p;if(!p)return;st={.
 // ---- build pages (web demo + real Android apps) ----
 I.Glass=I.Settings;
 const itemHTML=(a,l,t)=>a.p?`<div class="app" data-n="${a.n}" data-p="${a.p}" style="left:${l}px;top:${t}px"><div class="ic" style="background:#222"><img src="data:image/png;base64,${a.i}"></div><span>${a.n}</span></div>`:mk(a.n,l,t);
-const gridI=(a,y)=>a.map((x,i)=>itemHTML(x,cx[i%4],y+(i>>2)*99)).join('');
-function build(items){const pgs=[WID+gridI(items.slice(0,16),277)];for(let i=16;i<items.length;i+=24)pgs.push(gridI(items.slice(i,i+24),82));
+const gridI=(a,y,p)=>a.map((x,i)=>itemHTML(x,cx[i%4],y+(i>>2)*(p||99))).join('');
+function build(items){window.LASTAPPS=items;const cap=H-262;const fitRows=top=>{const avail=Math.max(88,cap-top);let r=Math.max(1,Math.floor(avail/88)+1);let p=99;if(r>1)p=Math.min(99,avail/(r-1));return[r,p]};const A=fitRows(277),B=fitRows(82),per1=A[0]*4,perN=B[0]*4;const pgs=[WID+gridI(items.slice(0,per1),277,A[1])];for(let i=per1;i<items.length;i+=perN)pgs.push(gridI(items.slice(i,i+perN),82,B[1]));
  track.innerHTML=pgs.map((h,i)=>`<div class="page" style="left:${i*390}px">${h}</div>`).join('');track.style.width=pgs.length*390+'px';N=pgs.length;setPg(Math.min(pg,N-1))}
 build(['FaceTime','Calendar','Photos','Camera','Mail','Notes','Reminders','Clock','News','TV','Games','App Store','Maps','Health','Wallets','Settings','Weather','Stocks','Files','Books','Calculator','Podcasts','Shortcuts','Home'].map(n=>({n})));
 function goHome(){if(cur)closeApp();pages.classList.remove('edit');setPg(0)}

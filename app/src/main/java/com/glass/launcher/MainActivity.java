@@ -1,70 +1,132 @@
 package com.glass.launcher;
 
 import android.app.Activity;
-import android.app.WallpaperManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Insets;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Base64;
 import android.util.DisplayMetrics;
-import android.view.HapticFeedbackConstants;
+import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Glass Launcher - a real Android HOME app.
+ * Glass Launcher - native shell for the user's index.html.
  *
- * The UI is a WebView page, but every measurement it uses comes from the device:
- * window insets, density, screen size, locale, battery state and the system
- * wallpaper. Nothing is hard-coded to one phone.
+ * The HTML is used exactly as authored (assets/index.html is a byte-for-byte copy).
+ * This class only does what a WebView page cannot: read the installed app list,
+ * hand it to the page through setApps(), and launch apps when the page asks.
+ *
+ * Everything is defensive: a HOME app must never leave the phone without a launcher,
+ * so every risky step is wrapped and there is a plain native fallback screen.
  */
 public class MainActivity extends Activity {
 
+  private static final String TAG = "GlassLauncher";
+
   private WebView web;
   private volatile boolean loaded = false;
-  private int insT, insB, insL, insR;
-  private BroadcastReceiver battReceiver, pkgReceiver;
-  private String wallpaperData = null;
+  private BroadcastReceiver pkgReceiver;
+  private boolean rebuilding = false;
 
   @Override protected void onCreate(Bundle b) {
     super.onCreate(b);
-    setupWindow();
+    installCrashGuard();
 
+    try { setupWindow(); } catch (Throwable t) { log(t); }
+
+    try {
+      startWeb();
+      registerPkgReceiver();
+    } catch (Throwable t) {
+      log(t);
+      showFallback();
+    }
+  }
+
+  /* ------------------------------------------------------------------ window */
+
+  private void setupWindow() {
+    Window win = getWindow();
+    win.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+    win.setStatusBarColor(Color.TRANSPARENT);
+    win.setNavigationBarColor(Color.TRANSPARENT);
+
+    if (Build.VERSION.SDK_INT >= 28) {
+      WindowManager.LayoutParams lp = win.getAttributes();
+      lp.layoutInDisplayCutoutMode =
+          WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+      win.setAttributes(lp);
+    }
+    hideStatusBar();
+  }
+
+  // The page draws its own clock, so the system status bar is hidden.
+  // The navigation bar is left alone - back/home gestures stay native.
+  private void hideStatusBar() {
+    try {
+      Window win = getWindow();
+      if (Build.VERSION.SDK_INT >= 30) {
+        win.setDecorFitsSystemWindows(false);
+        if (win.getInsetsController() != null) {
+          win.getInsetsController().hide(WindowInsets.Type.statusBars());
+        }
+      } else {
+        win.getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_FULLSCREEN);
+      }
+    } catch (Throwable t) {
+      log(t);
+    }
+  }
+
+  /* ----------------------------------------------------------------- webview */
+
+  private void startWeb() {
     web = new WebView(this);
     web.setBackgroundColor(Color.BLACK);
     web.setOverScrollMode(View.OVER_SCROLL_NEVER);
     web.setLongClickable(false);
-    web.setHapticFeedbackEnabled(true);
 
     WebSettings s = web.getSettings();
     s.setJavaScriptEnabled(true);
@@ -76,184 +138,78 @@ public class MainActivity extends Activity {
     s.setAllowFileAccess(true);
     s.setLoadWithOverviewMode(false);
     s.setUseWideViewPort(true);
-    s.setMediaPlaybackRequiresUserGesture(true);
-    if (Build.VERSION.SDK_INT >= 26) s.setSafeBrowsingEnabled(false);
+    if (Build.VERSION.SDK_INT >= 26) {
+      try { s.setSafeBrowsingEnabled(false); } catch (Throwable ignored) { }
+    }
 
     web.addJavascriptInterface(new Bridge(), "Android");
+    web.setWebChromeClient(new WebChromeClient());
     web.setWebViewClient(new WebViewClient() {
       @Override public void onPageFinished(WebView v, String url) {
         loaded = true;
-        pushSystem();
-        pushBattery(null);
         pushApps();
-        pushWallpaper();
       }
-    });
-    web.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
-      @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets in) {
-        readInsets(in);
-        pushSystem();
-        js("onSysChange()");
-        return in;
+
+      // The WebView renderer can die on its own (heavy blur, low memory, GPU reset).
+      // Without this the whole launcher would be killed with it - rebuild instead.
+      @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) {
+        Log.w(TAG, "render process gone - rebuilding webview");
+        rebuildWeb();
+        return true;
       }
     });
 
     setContentView(web);
     web.loadUrl("file:///android_asset/index.html");
-
-    // battery
-    battReceiver = new BroadcastReceiver() {
-      @Override public void onReceive(Context c, Intent i) { pushBattery(i); }
-    };
-    registerReceiver(battReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-
-    // installed / removed apps
-    IntentFilter f = new IntentFilter();
-    f.addAction(Intent.ACTION_PACKAGE_ADDED);
-    f.addAction(Intent.ACTION_PACKAGE_REMOVED);
-    f.addAction(Intent.ACTION_PACKAGE_CHANGED);
-    f.addAction(Intent.ACTION_PACKAGE_REPLACED);
-    f.addDataScheme("package");
-    pkgReceiver = new BroadcastReceiver() {
-      @Override public void onReceive(Context c, Intent i) { pushApps(); }
-    };
-    if (Build.VERSION.SDK_INT >= 33) registerReceiver(pkgReceiver, f, Context.RECEIVER_EXPORTED);
-    else registerReceiver(pkgReceiver, f);
   }
 
-  /* ---------------- window: edge to edge, custom status bar ---------------- */
-
-  private void setupWindow() {
-    Window win = getWindow();
-    win.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-    win.setStatusBarColor(Color.TRANSPARENT);
-    win.setNavigationBarColor(Color.TRANSPARENT);
-    if (Build.VERSION.SDK_INT >= 28) win.setNavigationBarDividerColor(Color.TRANSPARENT);
-    if (Build.VERSION.SDK_INT >= 28) {
-      WindowManager.LayoutParams lp = win.getAttributes();
-      lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-      win.setAttributes(lp);
-    }
-    hideStatusBar();
-  }
-
-  // Hide only the status bar: the launcher draws its own clock and battery.
-  // The navigation bar stays, so back/home gestures behave like the system expects.
-  private void hideStatusBar() {
-    Window win = getWindow();
-    if (Build.VERSION.SDK_INT >= 30) {
-      win.setDecorFitsSystemWindows(false);
-      android.view.WindowInsetsController c = win.getInsetsController();
-      if (c != null) {
-        c.hide(WindowInsets.Type.statusBars());
-        c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_DEFAULT);
-      }
-    } else {
-      win.getDecorView().setSystemUiVisibility(
-          View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-              | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-              | View.SYSTEM_UI_FLAG_FULLSCREEN);
-    }
-  }
-
-  private void readInsets(WindowInsets in) {
-    int t = 0, b = 0, l = 0, r = 0;
+  private void rebuildWeb() {
+    if (rebuilding) return;
+    rebuilding = true;
     try {
-      if (Build.VERSION.SDK_INT >= 30) {
-        Insets cut = in.getInsets(WindowInsets.Type.displayCutout());
-        Insets bars = in.getInsets(WindowInsets.Type.navigationBars());
-        Insets sys = in.getInsets(WindowInsets.Type.systemBars());
-        t = Math.max(cut.top, 0);
-        b = Math.max(bars.bottom, sys.bottom);
-        l = Math.max(cut.left, 0);
-        r = Math.max(cut.right, 0);
-      } else {
-        t = in.getSystemWindowInsetTop();
-        b = in.getSystemWindowInsetBottom();
-        l = in.getSystemWindowInsetLeft();
-        r = in.getSystemWindowInsetRight();
-        if (Build.VERSION.SDK_INT >= 28 && in.getDisplayCutout() != null) {
-          t = Math.max(t, in.getDisplayCutout().getSafeInsetTop());
-          b = Math.max(b, in.getDisplayCutout().getSafeInsetBottom());
-          l = Math.max(l, in.getDisplayCutout().getSafeInsetLeft());
-          r = Math.max(r, in.getDisplayCutout().getSafeInsetRight());
-        }
-      }
-    } catch (Throwable ignored) { }
-    if (t > 0 && t < dp(18)) t = dp(18);
-    insT = t; insB = b; insL = l; insR = r;
+      ViewGroup parent = web == null ? null : (ViewGroup) web.getParent();
+      if (parent != null) parent.removeView(web);
+      if (web != null) web.destroy();
+    } catch (Throwable t) {
+      log(t);
+    }
+    web = null;
+    loaded = false;
+    try {
+      startWeb();
+    } catch (Throwable t) {
+      log(t);
+      showFallback();
+    }
+    rebuilding = false;
   }
-
-  private int dp(float v) {
-    return Math.round(v * getResources().getDisplayMetrics().density);
-  }
-
-  /* ---------------- data pushed into the page ---------------- */
 
   private void js(final String code) {
-    if (web == null) return;
+    if (web == null || !loaded) return;
     runOnUiThread(new Runnable() {
       @Override public void run() {
-        try { web.evaluateJavascript(code, null); } catch (Throwable ignored) { }
+        try {
+          web.evaluateJavascript(code, null);
+        } catch (Throwable t) {
+          log(t);
+        }
       }
     });
   }
 
-  private void pushSystem() {
-    if (!loaded) return;
-    js("setSystem(" + JSONObject.quote(systemJson().toString()) + ")");
-  }
-
-  private JSONObject systemJson() {
-    DisplayMetrics dm = getResources().getDisplayMetrics();
-    JSONObject o = new JSONObject();
-    try {
-      o.put("t", insT);
-      o.put("b", insB);
-      o.put("l", insL);
-      o.put("r", insR);
-      o.put("d", (double) dm.density);
-      o.put("model", Build.MODEL == null ? "" : Build.MODEL);
-      o.put("manu", cap(Build.MANUFACTURER));
-      o.put("sdk", Build.VERSION.SDK_INT);
-      o.put("rel", Build.VERSION.RELEASE == null ? "" : Build.VERSION.RELEASE);
-      o.put("lang", Locale.getDefault().toString());
-      o.put("w", Math.round(dm.widthPixels / dm.density));
-      o.put("h", Math.round(dm.heightPixels / dm.density));
-    } catch (Exception ignored) { }
-    return o;
-  }
-
-  private static String cap(String s) {
-    if (s == null || s.length() == 0) return "";
-    return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase(Locale.ROOT);
-  }
-
-  private void pushBattery(Intent i) {
-    if (!loaded) return;
-    Intent in = i;
-    if (in == null) in = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-    int level = -1, scale = 100;
-    boolean charging = false;
-    if (in != null) {
-      level = in.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-      scale = in.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
-      int st = in.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-      charging = st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL;
-    }
-    int pct = level < 0 ? -1 : Math.round(level * 100f / Math.max(scale, 1));
-    js("setBattery(" + pct + "," + (charging ? "true" : "false") + ")");
-  }
+  /* ------------------------------------------------------------- app list */
 
   private void pushApps() {
-    if (!loaded) return;
+    if (web == null) return;
     new Thread(new Runnable() {
       @Override public void run() {
         try {
           final PackageManager pm = getPackageManager();
           Intent q = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
           List<ResolveInfo> raw = pm.queryIntentActivities(q, 0);
+          if (raw == null) raw = new ArrayList<ResolveInfo>();
           final List<ResolveInfo> list = new ArrayList<ResolveInfo>(raw);
+
           final Collator col = Collator.getInstance(Locale.getDefault());
           col.setStrength(Collator.PRIMARY);
           Collections.sort(list, new Comparator<ResolveInfo>() {
@@ -265,16 +221,24 @@ public class MainActivity extends Activity {
             }
           });
 
-          int px = Math.min(192, Math.max(96, dp(56)));
+          // Icon payload is the biggest thing we send to the page. Keep it small enough
+          // that a phone with 200+ apps cannot blow the WebView's memory.
+          int count = list.size();
+          int px;
+          if (count > 180) px = 72;
+          else if (count > 90) px = 88;
+          else px = 108;
+
           JSONArray apps = new JSONArray();
-          for (int k = 0; k < list.size(); k++) {
+          for (int k = 0; k < count; k++) {
             ResolveInfo ri = list.get(k);
+            if (ri == null || ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName())) continue;
+            if (pkg == null || pkg.equals(getPackageName())) continue;
             JSONObject o = new JSONObject();
-            o.put("n", ri.loadLabel(pm).toString());
+            o.put("n", label(pm, ri));
             o.put("p", pkg);
-            o.put("i", png(ri.loadIcon(pm), px));
+            o.put("i", png(icon(pm, ri), px));
             apps.put(o);
           }
 
@@ -287,10 +251,31 @@ public class MainActivity extends Activity {
           JSONObject out = new JSONObject().put("apps", apps).put("dock", dock);
           js("setApps(" + JSONObject.quote(out.toString()) + ")");
         } catch (Throwable t) {
-          t.printStackTrace();
+          log(t);
         }
       }
     }).start();
+  }
+
+  private String label(PackageManager pm, ResolveInfo ri) {
+    try {
+      CharSequence cs = ri.loadLabel(pm);
+      return cs == null ? ri.activityInfo.packageName : cs.toString();
+    } catch (Throwable t) {
+      return ri.activityInfo.packageName;
+    }
+  }
+
+  private Drawable icon(PackageManager pm, ResolveInfo ri) {
+    try {
+      Drawable d = ri.loadIcon(pm);
+      if (d != null) return d;
+    } catch (Throwable ignored) { }
+    try {
+      return pm.getDefaultActivityIcon();
+    } catch (Throwable t) {
+      return null;
+    }
   }
 
   private String pick(Intent i) {
@@ -299,111 +284,201 @@ public class MainActivity extends Activity {
       if (r == null || r.activityInfo == null) return "";
       String p = r.activityInfo.packageName;
       return getPackageManager().getLaunchIntentForPackage(p) != null ? p : "";
-    } catch (Throwable t) { return ""; }
+    } catch (Throwable t) {
+      return "";
+    }
   }
 
   private String png(Drawable d, int size) {
+    if (d == null) return "";
+    Bitmap bm = null;
     try {
-      Bitmap bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+      bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
       Canvas c = new Canvas(bm);
       d.setBounds(0, 0, size, size);
       d.draw(c);
       ByteArrayOutputStream o = new ByteArrayOutputStream();
       bm.compress(Bitmap.CompressFormat.PNG, 100, o);
-      bm.recycle();
       return Base64.encodeToString(o.toByteArray(), Base64.NO_WRAP);
-    } catch (Throwable t) { return ""; }
-  }
-
-  private void pushWallpaper() {
-    if (!loaded) return;
-    new Thread(new Runnable() {
-      @Override public void run() {
-        try {
-          if (wallpaperData == null) {
-            WallpaperManager wm = (WallpaperManager) getSystemService(WALLPAPER_SERVICE);
-            Drawable d = wm.getDrawable();
-            if (d == null) { wallpaperData = ""; }
-            else {
-              DisplayMetrics dm = getResources().getDisplayMetrics();
-              int bw = 720;
-              int bh = Math.max(600, Math.round(720f * dm.heightPixels / Math.max(dm.widthPixels, 1)));
-              Bitmap bm = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
-              Canvas c = new Canvas(bm);
-              d.setBounds(0, 0, bw, bh);
-              d.draw(c);
-              ByteArrayOutputStream o = new ByteArrayOutputStream();
-              bm.compress(Bitmap.CompressFormat.JPEG, 82, o);
-              bm.recycle();
-              wallpaperData = Base64.encodeToString(o.toByteArray(), Base64.NO_WRAP);
-            }
-          }
-          js("setWallpaper(" + JSONObject.quote(wallpaperData) + ")");
-        } catch (Throwable t) {
-          js("setWallpaper('')");
-        }
+    } catch (Throwable t) {
+      return "";
+    } finally {
+      if (bm != null) {
+        try { bm.recycle(); } catch (Throwable ignored) { }
       }
-    }).start();
+    }
   }
 
-  /* ---------------- page -> system ---------------- */
+  private void registerPkgReceiver() {
+    IntentFilter f = new IntentFilter();
+    f.addAction(Intent.ACTION_PACKAGE_ADDED);
+    f.addAction(Intent.ACTION_PACKAGE_REMOVED);
+    f.addAction(Intent.ACTION_PACKAGE_REPLACED);
+    f.addDataScheme("package");
+    pkgReceiver = new BroadcastReceiver() {
+      @Override public void onReceive(Context c, Intent i) {
+        pushApps();
+      }
+    };
+    if (Build.VERSION.SDK_INT >= 33) registerReceiver(pkgReceiver, f, Context.RECEIVER_EXPORTED);
+    else registerReceiver(pkgReceiver, f);
+  }
+
+  /* --------------------------------------------------------------- bridge */
 
   public class Bridge {
     @JavascriptInterface public void launch(String pkg) {
-      try {
-        Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
-        if (i == null) return;
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        startActivity(i);
-        overridePendingTransition(0, 0);
-      } catch (Throwable ignored) { }
+      launchPackage(pkg);
     }
 
     @JavascriptInterface public void appInfo(String pkg) {
       try {
-        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+        Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:" + pkg));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(i);
-        overridePendingTransition(0, 0);
-      } catch (Throwable ignored) { }
+      } catch (Throwable t) {
+        log(t);
+      }
     }
 
-    @JavascriptInterface public void refresh() { pushApps(); }
-
-    @JavascriptInterface public void tick() {
-      runOnUiThread(new Runnable() {
-        @Override public void run() { web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); }
-      });
+    @JavascriptInterface public void refresh() {
+      pushApps();
     }
-
-    @JavascriptInterface public String info() { return systemJson().toString(); }
   }
 
-  /* ---------------- lifecycle ---------------- */
+  private void launchPackage(String pkg) {
+    if (pkg == null || pkg.length() == 0) return;
+    try {
+      Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+      if (i == null) {
+        // app vanished between listing and tapping - close the page's overlay
+        js("goHome()");
+        return;
+      }
+      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+      startActivity(i);
+      overridePendingTransition(0, 0);
+    } catch (Throwable t) {
+      log(t);
+    }
+  }
 
-  @Override public void onBackPressed() { js("goBack()"); }
+  /* ------------------------------------------------------------- fallback */
+
+  // Plain native app list, used only if the WebView cannot start.
+  // A launcher that shows *something* beats a black screen.
+  private void showFallback() {
+    try {
+      ScrollView sv = new ScrollView(this);
+      sv.setBackgroundColor(Color.BLACK);
+      LinearLayout ll = new LinearLayout(this);
+      ll.setOrientation(LinearLayout.VERTICAL);
+      ll.setPadding(dp(14), dp(34), dp(14), dp(20));
+
+      TextView head = new TextView(this);
+      head.setText("Glass Launcher - safe mode");
+      head.setTextColor(Color.WHITE);
+      head.setTextSize(17);
+      head.setPadding(0, 0, 0, dp(12));
+      ll.addView(head);
+
+      PackageManager pm = getPackageManager();
+      List<ResolveInfo> list = pm.queryIntentActivities(
+          new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0);
+      final Collator col = Collator.getInstance(Locale.getDefault());
+      Collections.sort(list, new Comparator<ResolveInfo>() {
+        @Override public int compare(ResolveInfo a, ResolveInfo c) {
+          return col.compare(a.loadLabel(getPackageManager()).toString(),
+              c.loadLabel(getPackageManager()).toString());
+        }
+      });
+      for (int i = 0; i < list.size(); i++) {
+        ResolveInfo ri = list.get(i);
+        if (ri.activityInfo == null) continue;
+        final String pkg = ri.activityInfo.packageName;
+        if (pkg.equals(getPackageName())) continue;
+        Button b = new Button(this);
+        b.setAllCaps(false);
+        b.setText(label(pm, ri));
+        b.setOnClickListener(new View.OnClickListener() {
+          @Override public void onClick(View v) { launchPackage(pkg); }
+        });
+        ll.addView(b);
+      }
+      sv.addView(ll);
+      setContentView(sv);
+    } catch (Throwable t) {
+      log(t);
+    }
+  }
+
+  private int dp(int v) {
+    try {
+      return Math.round(v * getResources().getDisplayMetrics().density);
+    } catch (Throwable t) {
+      return v * 3;
+    }
+  }
+
+  /* ------------------------------------------------------------ crash log */
+
+  private void installCrashGuard() {
+    final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+    Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+      @Override public void uncaughtException(Thread t, Throwable e) {
+        try {
+          File f = new File(getFilesDir(), "last_crash.txt");
+          PrintWriter pw = new PrintWriter(new FileWriter(f, false));
+          pw.println(new Date().toString());
+          pw.println("Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+          pw.println(Build.MANUFACTURER + " " + Build.MODEL);
+          e.printStackTrace(pw);
+          pw.flush();
+          pw.close();
+        } catch (Throwable ignored) { }
+        if (prev != null) prev.uncaughtException(t, e);
+      }
+    });
+  }
+
+  private void log(Throwable t) {
+    try {
+      Log.e(TAG, "handled: " + t, t);
+    } catch (Throwable ignored) { }
+  }
+
+  /* ------------------------------------------------------------ lifecycle */
+
+  @Override public void onBackPressed() {
+    if (web != null && loaded) js("goBack()");
+    else super.onBackPressed();
+  }
 
   @Override protected void onNewIntent(Intent i) {
     super.onNewIntent(i);
-    if (Intent.ACTION_MAIN.equals(i.getAction())) js("goHome()");
+    if (i != null && Intent.ACTION_MAIN.equals(i.getAction())) js("goHome()");
   }
 
   @Override protected void onResume() {
     super.onResume();
     hideStatusBar();
-    wallpaperData = null;
-    if (loaded) { js("onResumeL()"); pushBattery(null); }
-  }
-
-  @Override public void onConfigurationChanged(Configuration cfg) {
-    super.onConfigurationChanged(cfg);
-    pushSystem();
-    js("onSysChange()");
+    if (web != null && loaded) js("onResumeL()");
   }
 
   @Override protected void onDestroy() {
-    try { if (battReceiver != null) unregisterReceiver(battReceiver); } catch (Throwable ignored) { }
-    try { if (pkgReceiver != null) unregisterReceiver(pkgReceiver); } catch (Throwable ignored) { }
+    try {
+      if (pkgReceiver != null) unregisterReceiver(pkgReceiver);
+    } catch (Throwable ignored) { }
+    pkgReceiver = null;
+    try {
+      if (web != null) {
+        ViewGroup p = (ViewGroup) web.getParent();
+        if (p != null) p.removeView(web);
+        web.destroy();
+      }
+    } catch (Throwable ignored) { }
+    web = null;
     super.onDestroy();
   }
 }

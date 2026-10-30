@@ -146,6 +146,12 @@ public class MainActivity extends Activity {
     if (Build.VERSION.SDK_INT >= 26) {
       try { s.setSafeBrowsingEnabled(false); } catch (Throwable ignored) { }
     }
+    // Force-dark / algorithmic darkening inverts images too - app icons came out as
+    // dark silhouettes on phones running dark mode.
+    try {
+      if (Build.VERSION.SDK_INT >= 33) s.setAlgorithmicDarkeningAllowed(false);
+      else if (Build.VERSION.SDK_INT >= 29) s.setForceDark(WebSettings.FORCE_DARK_OFF);
+    } catch (Throwable ignored) { }
 
     web.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
       @Override public WindowInsets onApplyWindowInsets(View v, WindowInsets in) {
@@ -416,6 +422,22 @@ public class MainActivity extends Activity {
       Canvas c = new Canvas(bm);
       d.setBounds(0, 0, size, size);
       d.draw(c);
+
+      // a legacy icon with a transparent background would show as a dark glyph on a
+      // black tile; give it an iOS style light tile instead
+      boolean clear = Color.alpha(bm.getPixel(1, 1)) < 250
+          || Color.alpha(bm.getPixel(size - 2, 1)) < 250
+          || Color.alpha(bm.getPixel(1, size - 2)) < 250
+          || Color.alpha(bm.getPixel(size - 2, size - 2)) < 250;
+      if (clear) {
+        Bitmap base = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas bc = new Canvas(base);
+        bc.drawColor(0xFFF3F3F7);
+        bc.drawBitmap(bm, 0, 0, null);
+        bm.recycle();
+        bm = base;
+      }
+
       ByteArrayOutputStream o = new ByteArrayOutputStream();
       bm.compress(Bitmap.CompressFormat.PNG, 100, o);
       return Base64.encodeToString(o.toByteArray(), Base64.NO_WRAP);

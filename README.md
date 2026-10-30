@@ -1,9 +1,9 @@
-# Glass Launcher 2.5
+# Glass Launcher 2.6
 
 An iOS‑style Liquid Glass home screen for Android — a real HOME app (launcher), not a
 mockup. The UI is your `index.html`, with a handful of lines changed — every one of them a bug fix, no redesign.
 
-[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.5/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
+[**⬇ Download the APK**](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/download/v2.6/GlassLauncher.apk) · [latest release](https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest) · 69 KB · Android 7.0+ (API 24) · no permissions
 
 | Home (21:9 phone) | Second page | Liquid Glass controls |
 |:--:|:--:|:--:|
@@ -119,6 +119,20 @@ build.sh                                CLI build
 ```
 
 ## Changelog
+
+**2.6 — icons, from the device screenshot**
+* **Icons rendered as dark silhouettes.** WebView's algorithmic darkening (on by default for
+  targetSdk 33+ when the phone runs dark mode) dims images too. Now explicitly disabled:
+  `setAlgorithmicDarkeningAllowed(false)` on API 33+, `setForceDark(FORCE_DARK_OFF)` below.
+* **iOS 26 liquid glass on every icon** — a specular sweep from the top-left, a bright rim,
+  an inner shadow at the bottom and a light glass base, so transparent icons sit on glass
+  instead of on black.
+* **Legacy icons with a transparent background** get an iOS-style light tile behind them
+  (detected from the corner alpha of the rendered bitmap) instead of a dark glyph on black.
+* **Long app names** ("Audio to Video Converter") wrapped to three lines and ran into the next
+  row; labels are now clamped to two lines.
+* **The dock could still be cut off** at the bottom of the screen: after scaling, the canvas is
+  now measured against the visible viewport and pulled back if it overhangs.
 
 **2.5 — bug sweep (17 automated interaction tests, all passing)**
 * **The launcher rendered zoomed and cropped.** `#phone` was scaled with

@@ -48,13 +48,13 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-f
 .app{position:absolute;display:flex;flex-direction:column;align-items:center;gap:6px;transition:transform .26s var(--sp)}
 .app:active{transform:scale(.86)}
 .ic{position:relative;overflow:hidden;display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,20,60,.28);background:#1c1c1e}
-.ic img{width:100%;height:100%;display:block}
+.ic img,.ic svg{width:100%;height:100%;display:block}
 .ic .lt{font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)}
 .nm{font-weight:500;line-height:1.15;text-align:center;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
  text-shadow:0 1px 4px rgba(0,30,70,.5)}
 
 /* ---------- widgets ---------- */
-.wg{position:absolute;border-radius:24px;padding:12px 14px;overflow:hidden}
+.wg{position:absolute;border-radius:24px;padding:12px 14px;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
 .wgt{position:absolute;text-align:center;font-weight:500;text-shadow:0 1px 4px rgba(0,30,70,.5)}
 .wg .big{font-weight:300;line-height:1;font-variant-numeric:tabular-nums}
 .wg .sub{font-size:12px;font-weight:500;opacity:.92}
@@ -93,7 +93,7 @@ input[type=range]{width:100%;accent-color:#fff;margin:10px 0 2px}
 
 /* ---------- sheet ---------- */
 #sheet{position:absolute;left:0;right:0;bottom:0;z-index:70;display:none}
-#sheet .inner{border-radius:26px;padding:10px;margin:0 10px}
+#sheet .inner{border-radius:26px;padding:10px;margin:0 10px;background-color:rgba(24,26,38,.5)}
 #sheet .ttl{font-size:13px;font-weight:600;opacity:.7;text-align:center;padding:8px 4px 12px}
 #sheet .row{display:flex;align-items:center;justify-content:space-between;padding:13px 12px;border-radius:16px;font-size:14.5px;font-weight:500}
 #sheet .row:active{background:rgba(255,255,255,.14)}
@@ -159,8 +159,10 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
 function px(n){return Math.round(n)+'px'}
 
+var GSVG='<svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="23" fill="none" stroke="#3a3a3c" stroke-width="4" stroke-dasharray="1.5 1.2"/><circle cx="30" cy="30" r="19" fill="#6e6e73" stroke="#2c2c2e" stroke-width="2"/><circle cx="30" cy="30" r="5" fill="#2c2c2e"/><path d="M30 30V14M30 30l14 8M30 30l-14 8" stroke="#2c2c2e" stroke-width="3.4"/></svg>';
 function iconHTML(a,size,r){
   var rad=(size*0.224).toFixed(1)+'px';
+  if(a.g) return '<div class="ic" style="width:'+px(size)+';height:'+px(size)+';border-radius:'+rad+';background:linear-gradient(180deg,#d6d6db,#8e8e93)">'+GSVG+'</div>';
   if(a.i) return '<div class="ic" style="width:'+px(size)+';height:'+px(size)+';border-radius:'+rad+'"><img src="data:image/png;base64,'+a.i+'" alt=""></div>';
   var h=hue(a.n||'?');
   return '<div class="ic" style="width:'+px(size)+';height:'+px(size)+';border-radius:'+rad+
@@ -563,7 +565,7 @@ window.setApps=function(j){
   try{
     var o=typeof j==='string'?JSON.parse(j):j;
     var list=o.apps||[];
-    APPS=[{n:'Glass',p:'',i:''}].concat(list);
+    APPS=[{n:'Glass',p:'',i:'',g:1}].concat(list);
     var dk=[];
     for(var i=0;i<(o.dock||[]).length;i++){
       var p=o.dock[i]; if(!p) continue;

@@ -1,10 +1,10 @@
 <div align="center">
 
+<img src="assets/icon.png" width="96" height="96" alt="iOS 26 style Liquid Glass home screen for Android icon">
+
+<img src="assets/banner.svg" alt="iOS 26 style Liquid Glass home screen for Android — a real launcher APK whose UI is one HTML file…">
+
 <a href="https://github.com/technicalnihilist-lgtm/glass-launcher/stargazers"><img src="https://img.shields.io/badge/stars-0-5A31F4?style=for-the-badge&logo=github&logoColor=white" alt="stars: 0"></a>&nbsp;<a href="https://github.com/technicalnihilist-lgtm/glass-launcher/network/members"><img src="https://img.shields.io/badge/forks-0-3FB950?style=for-the-badge" alt="forks: 0"></a>
-
-<h3>iOS 26 style Liquid Glass home screen for Android — a real launcher APK whose UI is one HTML file…</h3>
-
-<img src="https://img.shields.io/badge/HTML-5865F2?style=flat-square" alt="HTML"> <img src="https://img.shields.io/badge/Android-3B3F4A?style=flat-square" alt="Android"> <img src="https://img.shields.io/badge/APK-3FB950?style=flat-square" alt="APK"> <img src="https://img.shields.io/badge/Home%20Screen-EC4899?style=flat-square" alt="Home Screen">
 
 <a href="https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest"><img src="https://img.shields.io/badge/DOWNLOAD-APK-6D5AE6?style=for-the-badge&logo=android&logoColor=white" alt="Download APK"></a>
 
@@ -16,13 +16,7 @@
 
 <a href="https://github.com/technicalnihilist-lgtm/glass-launcher/releases/latest"><img src="https://img.shields.io/badge/VERSION-v2.6-6D5AE6?style=for-the-badge" alt="VERSION: v2.6"></a> <img src="https://img.shields.io/badge/DOWNLOADS-52-3FB950?style=for-the-badge" alt="DOWNLOADS: 52"> <a href="https://github.com/technicalnihilist-lgtm/glass-launcher/releases"><img src="https://img.shields.io/badge/RELEASES-GITHUB-EC4899?style=for-the-badge&logo=github&logoColor=white" alt="RELEASES: GITHUB"></a>
 
-<h4>Get it from</h4>
-
-<a href="https://github.com/technicalnihilist-lgtm/glass-launcher/releases"><img src="https://img.shields.io/badge/GitHub-Releases-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Releases"></a> <a href="https://github.com/technicalnihilist-lgtm/glass-launcher/archive/refs/heads/main.zip"><img src="https://img.shields.io/badge/Source-ZIP-0EA5E9?style=for-the-badge&logo=github&logoColor=white" alt="Source ZIP"></a>
-
 </div>
-
----
 
 ---
 
